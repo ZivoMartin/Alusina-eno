@@ -1,0 +1,11 @@
+
+add.riscv:     file format elf64-littleriscv
+
+
+Disassembly of section .text:
+
+00000000000100b0 <_start>:
+   100b0:	00002537          	lui	a0,0x2
+   100b4:	000035b7          	lui	a1,0x3
+   100b8:	00b50533          	add	a0,a0,a1
+   100bc:	00008067          	ret
