@@ -1,62 +1,6 @@
+use super::{Csr, Imm, Instr, Zimm};
 use crate::registers::{RD, RS};
 use anyhow::{Result, bail};
-
-pub type Imm = u32;
-pub type Shamt = i32;
-pub type Pred = u8;
-pub type Succ = u8;
-pub type Zimm = u32;
-pub type Csr = u32;
-
-pub enum Instr {
-    Lui(Imm, RD),
-    AUIPC(Imm, RD),
-    JAL,
-    JALR(Imm, RS, RD),
-    Beq,
-    Bne,
-    Blt,
-    Bge,
-    Bltu,
-    Bgeu,
-    Lb(Imm, RS, RD),
-    Lh(Imm, RS, RD),
-    Lw(Imm, RS, RD),
-    Lbu(Imm, RS, RD),
-    Lhu(Imm, RS, RD),
-    Sb(Imm, RS, RS, Imm),
-    Sh(Imm, RS, RS, Imm),
-    Sw(Imm, RS, RS, Imm),
-    Addi(Imm, RS, RD),
-    Slti(Imm, RS, RD),
-    Sltiu(Imm, RS, RD),
-    Xori(Imm, RS, RD),
-    Ori(Imm, RS, RD),
-    Andi(Imm, RS, RD),
-    Slli(Shamt, RS, RD),
-    Srli(Shamt, RS, RD),
-    Srai(Shamt, RS, RD),
-    Add(RS, RS, RD),
-    Sub(RS, RS, RD),
-    Sll(Shamt, RS, RD),
-    Slt(Shamt, RS, RD),
-    Sltu(Shamt, RS, RD),
-    Xor(RS, RS, RD),
-    Srl(RS, RS, RD),
-    Sra(RS, RS, RD),
-    Or(RS, RS, RD),
-    And(RS, RS, RD),
-    Fence(Pred, Succ),
-    FenceI,
-    Ecall,
-    Ebreak,
-    Csrrw(Csr, RS, RD),
-    Csrrs(Csr, RS, RD),
-    Csrrc(Csr, RS, RD),
-    Cssrwi(Csr, Zimm, RD),
-    Cssrsi(Csr, Zimm, RD),
-    Cssrci(Csr, Zimm, RD),
-}
 
 macro_rules! rd {
     ($instr:expr) => {
@@ -129,20 +73,43 @@ macro_rules! csr {
     };
 }
 
+macro_rules! imm_sb {
+    ($instr:expr) => {{
+        let imm_11 = ($instr >> 7) & 0x1;
+        let imm_4_1 = ($instr >> 8) & 0xF;
+        let imm_10_5 = ($instr >> 25) & 0x3F;
+        let imm_12 = ($instr >> 31) & 0x1;
+
+        let imm = (imm_12 << 12) | (imm_11 << 11) | (imm_10_5 << 5) | (imm_4_1 << 1);
+
+        (imm as i32).wrapping_shl(19).wrapping_shr(19) as Imm
+    }};
+}
+
 impl Instr {
     pub fn decode(instr: u32) -> Result<Self> {
         Ok(match instr & 0x7F {
             0b0110111 => Self::Lui(imm_left!(instr), rd!(instr)),
             0b0010111 => Self::AUIPC(imm_left!(instr), rd!(instr)),
-            0b1101111 => todo!("JAL"),
-            0b1100111 => Self::JALR(imm_left!(instr), rs1!(instr), rd!(instr)),
+            0b1101111 => {
+                let imm20 = (instr >> 31) & 0x1;
+                let imm10_1 = (instr >> 21) & 0x3FF;
+                let imm11 = (instr >> 20) & 0x1;
+                let imm19_12 = (instr >> 12) & 0xFF;
+                let imm = (imm20 << 20) | (imm19_12 << 12) | (imm11 << 11) | (imm10_1 << 1);
+                Self::Jal(
+                    (imm as i32).wrapping_shl(11).wrapping_shr(11) as Imm,
+                    rd!(instr),
+                )
+            }
+            0b1100111 => Self::Jalr(imm_left!(instr), rs1!(instr), rd!(instr)),
             0b1100011 => match flag!(instr) {
-                0b000 => Self::Beq,
-                0b001 => Self::Bne,
-                0b100 => Self::Blt,
-                0b101 => Self::Bge,
-                0b110 => Self::Bltu,
-                0b111 => Self::Bgeu,
+                0b000 => Self::Beq(imm_sb!(instr), rs2!(instr), rs1!(instr)),
+                0b001 => Self::Bne(imm_sb!(instr), rs2!(instr), rs1!(instr)),
+                0b100 => Self::Blt(imm_sb!(instr), rs2!(instr), rs1!(instr)),
+                0b101 => Self::Bge(imm_sb!(instr), rs2!(instr), rs1!(instr)),
+                0b110 => Self::Bltu(imm_sb!(instr), rs2!(instr), rs1!(instr)),
+                0b111 => Self::Bgeu(imm_sb!(instr), rs2!(instr), rs1!(instr)),
                 _ => bail!("Invalid branch funct3: {}", flag!(instr)),
             },
             0b0000011 => match flag!(instr) {
