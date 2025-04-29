@@ -1,6 +1,7 @@
 use anyhow::{Result, bail};
 use kernel::Kernel;
 use std::env::args;
+mod header;
 mod instr;
 mod kernel;
 mod registers;
